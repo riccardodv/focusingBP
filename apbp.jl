@@ -411,10 +411,10 @@ function energy(d::Vector{Int}, p::Vector{Int}, s::Matrix{Float64}, λ::Float64)
     @inbounds for i = 1:N
         if d[i] == 1
             E += λ
-else
+        else
             E += s[i,p[i]]
         end
-end
+    end
     return E
 end
 
