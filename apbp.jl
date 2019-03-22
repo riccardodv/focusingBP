@@ -117,6 +117,14 @@ function runFBP(data::Matrix{Float64}, γ::Float64, y::Float64;
     return is_good(d, p), t, E, d, p
 end
 
+macro damp(δ, ex)
+    @assert Meta.isexpr(ex, :(=))
+    δ = esc(δ)
+    dst = esc(ex.args[1])
+    src = esc(ex.args[2])
+    return :($dst = $dst * $δ + $src * (1 - $δ))
+end
+
 # function runRBP(data::Matrix{Float64}, ρ::Float64;
 #                 seed::Int = 123,
 #                 ρfact::Float64 = 1.0,
@@ -169,24 +177,21 @@ function oneFBPstep!(mess::FMessages, s::Matrix{Float64}, λ::Float64, γ::Float
             j == i && continue
             ψji = ψ[j,i]
             ϕ3 = max(ψji[1], 0.0)
-            ϕnew = @SVector [max(0.0, ψji[2] - ϕ3), ψji[1] - ϕ3]
-            ϕ[j,i] = ϕnew
-            sumϕ1 += ϕnew[1]
+            @damp δ  ϕ[j,i] = @SVector([max(0.0, ψji[2] - ϕ3), ψji[1] - ϕ3])
+            sumϕ1 += ϕ[j,i][1]
 
             ψsji = ψs[j,i]
             ϕs3 = max(ψsji[1], 0.0)
-            ϕsnew = @SVector [max(0.0, ψsji[2] - ϕs3), ψsji[1] - ϕs3]
-            ϕs[j,i] = ϕsnew
-            sumϕs1 += ϕsnew[1]
-
+            @damp δ  ϕs[j,i] = @SVector([max(0.0, ψsji[2] - ϕs3), ψsji[1] - ϕs3])
+            sumϕs1 += ϕs[j,i][1]
         end
 
         # ϕ̃[i] = γ + max(ψ̂[i], -γ) - max(ψ̂[i], γ)
-        ϕ̃[i] = abs(ψ̂[i]) ≥ γ ? sign(ψ̂[i]) * γ : ψ̂[i] # assumes γ > 0
-        ϕ̂[i] = abs(ψ̃[i]) ≥ γ ? sign(ψ̃[i]) * γ : ψ̃[i] # assumes γ > 0
+        @damp δ  ϕ̃[i] = abs(ψ̂[i]) ≥ γ ? sign(ψ̂[i]) * γ : ψ̂[i] # assumes γ > 0
+        @damp δ  ϕ̂[i] = abs(ψ̃[i]) ≥ γ ? sign(ψ̃[i]) * γ : ψ̃[i] # assumes γ > 0
 
-        ψ̂[i] = sumϕ1 - λ - maximum(ϕ[j,i][2] - s[j,i] for j = 1:N if j ≠ i)
-        ψ̃[i] = (y-1) * ϕ̃[i] + sumϕs1 - maximum(ϕs[j,i][2] for j in 1:N if j ≠ i)
+        @damp δ  ψ̂[i] = sumϕ1 - λ - maximum(ϕ[j,i][2] - s[j,i] for j = 1:N if j ≠ i)
+        @damp δ  ψ̃[i] = (y-1) * ϕ̃[i] + sumϕs1 - maximum(ϕs[j,i][2] for j in 1:N if j ≠ i)
 
         # original graph cavity fields
         for j = 1:N
@@ -197,8 +202,7 @@ function oneFBPstep!(mess::FMessages, s::Matrix{Float64}, λ::Float64, γ::Float
             ψ1 = -λ + sumϕ1 - ϕ[j,i][1] + ϕ̂[i] - ψ3
             ψ2 = -s[i,j] - ϕ̂[i] - ψ3
 
-            ψnew = @SVector [ψ1, ψ2]
-            ψ[i,j] = δ * ψ[i,j] + (1.0-δ) * ψnew
+            @damp δ  ψ[i,j] = @SVector([ψ1, ψ2])
         end
 
         # auxiliary graph cavity fields
@@ -210,8 +214,7 @@ function oneFBPstep!(mess::FMessages, s::Matrix{Float64}, λ::Float64, γ::Float
             ψs1 = sumϕs1 - ϕs[j,i][1] + y * ϕ̃[i] - ψs3
             ψs2 = -y * ϕ̃[i] - ψs3
 
-            ψsnew = @SVector [ψs1, ψs2]
-            ψs[i,j] = δ * ψs[i,j] + (1-δ) * ψsnew
+            @damp δ ψs[i,j] = @SVector([ψs1, ψs2])
         end
     end
 
