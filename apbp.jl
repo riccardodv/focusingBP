@@ -5,6 +5,8 @@ using Statistics
 using ExtractMacro
 using StaticArrays
 
+using Clustering
+
 const MArray{L,N} = Array{SVector{L,Float64},N} where {L,N}
 const MMatrix{L} = MArray{L,2} where L
 const MVector{L} = MArray{L,1} where L
@@ -78,6 +80,7 @@ end
 
 function runFBP(data::Matrix{Float64}, γ::Float64, y::Float64;
                 seed::Int = 123,
+                δ::Float64 = 0.0, # damping parameter (δ = 0 -> no damping)
                 γfact::Float64 = 1.0,
                 yfact::Float64 = 1.0,
                 λ = nothing, # self-similarity
@@ -95,7 +98,7 @@ function runFBP(data::Matrix{Float64}, γ::Float64, y::Float64;
     t_stab = 0
     E = 0.0
     while t < max_iter && t_stab < t_stop
-        oneFBPstep!(mess, s, λ, γ, y)
+        oneFBPstep!(mess, s, λ, γ, y, δ)
         d, p = assign_variables(mess, s, λ)
         E = 0.0
         if is_good(d, p)
@@ -109,11 +112,7 @@ function runFBP(data::Matrix{Float64}, γ::Float64, y::Float64;
         γ *= γfact
         y *= yfact
     end
-
-    #
-    # exemplars = unique(p[d.==2])
-    # the exemplars are data[:,exemplars]
-    #
+    println("energy AP: \t $(energy_AP(s, λ))")
 
     return is_good(d, p), t, E, d, p
 end
@@ -158,7 +157,7 @@ end
 #     return is_good(d, p), t, E, d, p
 # end
 
-function oneFBPstep!(mess::FMessages, s::Matrix{Float64}, λ::Float64, γ::Float64, y::Float64)
+function oneFBPstep!(mess::FMessages, s::Matrix{Float64}, λ::Float64, γ::Float64, y::Float64, δ::Float64)
     # perform a single asynchronous step of f-BP update equations
     @extract mess : N ψ ϕ ψs ϕs ψ̂ ϕ̂ ψ̃ ϕ̃
 
@@ -199,7 +198,7 @@ function oneFBPstep!(mess::FMessages, s::Matrix{Float64}, λ::Float64, γ::Float
             ψ2 = -s[i,j] - ϕ̂[i] - ψ3
 
             ψnew = @SVector [ψ1, ψ2]
-            ψ[i,j] = ψnew
+            ψ[i,j] = δ * ψ[i,j] + (1.0-δ) * ψnew
         end
 
         # auxiliary graph cavity fields
@@ -212,7 +211,7 @@ function oneFBPstep!(mess::FMessages, s::Matrix{Float64}, λ::Float64, γ::Float
             ψs2 = -y * ϕ̃[i] - ψs3
 
             ψsnew = @SVector [ψs1, ψs2]
-            ψs[i,j] = ψsnew
+            ψs[i,j] = δ * ψs[i,j] + (1-δ) * ψsnew
         end
     end
 
@@ -378,16 +377,42 @@ function is_good(d::Vector{Int}, p::Vector{Int})
     return true
 end
 
+function energy_AP(s::Matrix{Float64}, λ::Float64)
+    N = size(s,2)
+    s_ap = zeros(N,N)
+    d = zeros(Int, N)
+    p = zeros(Int, N)
+
+    s_ap[:] = -s[:]
+    [s_ap[i,i] = -λ for i = 1:N]
+    R = affinityprop(s_ap, display=:none)
+    if R.converged
+        as = R.assignments
+        ex = R.exemplars
+        for i = 1:N
+            p[i] = ex[as[i]]
+            d[i] = 2
+            if as[i] == i
+                p[i] = 0
+                d[i] = 1
+            end
+        end
+        return energy(d, p, s, λ)
+    else
+        return 0.0
+    end
+end
+
 function energy(d::Vector{Int}, p::Vector{Int}, s::Matrix{Float64}, λ::Float64)
     N = size(s, 1)
     E = 0
     @inbounds for i = 1:N
         if d[i] == 1
             E += λ
-        else
+else
             E += s[i,p[i]]
         end
-    end
+end
     return E
 end
 
