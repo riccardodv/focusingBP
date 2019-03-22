@@ -386,21 +386,20 @@ function energy_AP(s::Matrix{Float64}, λ::Float64)
     s_ap[:] = -s[:]
     [s_ap[i,i] = -λ for i = 1:N]
     R = affinityprop(s_ap, display=:none)
-    if R.converged
-        as = R.assignments
-        ex = R.exemplars
-        for i = 1:N
-            p[i] = ex[as[i]]
-            d[i] = 2
-            if as[i] == i
-                p[i] = 0
-                d[i] = 1
-            end
+    R.converged || return Inf
+
+    as = R.assignments
+    ex = R.exemplars
+    for i = 1:N
+        p[i] = ex[as[i]]
+        d[i] = 2
+        if p[i] == i
+            p[i] = 0
+            d[i] = 1
         end
-        return energy(d, p, s, λ)
-    else
-        return 0.0
     end
+    @assert is_good(d, p)
+    return energy(d, p, s, λ)
 end
 
 function energy(d::Vector{Int}, p::Vector{Int}, s::Matrix{Float64}, λ::Float64)
