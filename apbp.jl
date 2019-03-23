@@ -7,21 +7,18 @@ using LinearAlgebra
 
 using Clustering
 
-const MArray{L,N} = Array{NTuple{L,Float64},N} where {L,N}
-const MMatrix{L} = MArray{L,2} where L
-const MVector{L} = MArray{L,1} where L
-
-mzeros(::Val{L}, dims...) where L = fill(tuple(zeros(L)...), dims...)
-mrand(::Val{L}, x, dims...) where L = fill(tuple((x .* randn(L))...), dims...)
-
 mutable struct FMessages
     N::Integer
     # original graph messages
-    ψ::MMatrix{2}
-    ϕ::MMatrix{2}
+    ψ1::Matrix{Float64}
+    ψ2::Matrix{Float64}
+    ϕ1::Matrix{Float64}
+    ϕ2::Matrix{Float64}
     # auxiliary graph messages
-    ψs::MMatrix{2}
-    ϕs::MMatrix{2}
+    ψs1::Matrix{Float64}
+    ψs2::Matrix{Float64}
+    ϕs1::Matrix{Float64}
+    ϕs2::Matrix{Float64}
     # exchange messages
     # from/to auxiliary graph and R
     ψ̂::Vector{Float64}
@@ -31,15 +28,19 @@ mutable struct FMessages
     ϕ̃::Vector{Float64}
     function FMessages(N, x = 0.0)
         # the messages are initialized to zero
-        ψ = mrand(Val(2), x, N, N)
-        ϕ = mrand(Val(2), x, N, N)
-        ψs = mrand(Val(2), x, N, N)
-        ϕs = mrand(Val(2), x, N, N)
+        ψ1 = x .* randn(N, N)
+        ψ2 = x .* randn(N, N)
+        ϕ1 = x .* randn(N, N)
+        ϕ2 = x .* randn(N, N)
+        ψs1 = x .* randn(N, N)
+        ψs2 = x .* randn(N, N)
+        ϕs1 = x .* randn(N, N)
+        ϕs2 = x .* randn(N, N)
         ψ̂ = x .* randn(N)
         ϕ̂ = x .* randn(N)
         ψ̃ = x .* randn(N)
         ϕ̃ = x .* randn(N)
-        return new(N, ψ, ϕ, ψs, ϕs, ψ̂, ϕ̂, ψ̃, ϕ̃)
+        return new(N, ψ1, ψ2, ϕ1, ϕ2, ψs1, ψs2, ϕs1, ϕs2, ψ̂, ϕ̂, ψ̃, ϕ̃)
     end
 end
 
@@ -177,26 +178,29 @@ end
 
 function oneFBPstep!(mess::FMessages, s::Matrix{Float64}, λ::Float64, γ::Float64, y::Float64, δ::Float64)
     # perform a single asynchronous step of f-BP update equations
-    @extract mess : N ψ ϕ ψs ϕs ψ̂ ϕ̂ ψ̃ ϕ̃
+    @extract mess : N ψ1 ψ2 ϕ1 ϕ2 ψs1 ψs2 ϕs1 ϕs2 ψ̂ ϕ̂ ψ̃ ϕ̃
 
     sumϕ1v = zeros(N)
     sumϕs1v = zeros(N)
 
     @inbounds for i in randperm(N)
-
         sumϕ1 = 0.0
         sumϕs1 = 0.0
         for j in 1:N
             j == i && continue
-            ψji = ψ[j,i]
-            ϕ3 = max(ψji[1], 0.0)
-            @damp δ  ϕ[j,i] = (max(0.0, ψji[2] - ϕ3), ψji[1] - ϕ3)
-            sumϕ1 += ϕ[j,i][1]
+            ψ1ji = ψ1[j,i]
+            ψ2ji = ψ2[j,i]
+            ϕ3 = max(ψ1ji, 0.0)
+            @damp δ  ϕ1[j,i] = max(0.0, ψ2ji - ϕ3)
+            @damp δ  ϕ2[j,i] = ψ1ji - ϕ3
+            sumϕ1 += ϕ1[j,i]
 
-            ψsji = ψs[j,i]
-            ϕs3 = max(ψsji[1], 0.0)
-            @damp δ  ϕs[j,i] = (max(0.0, ψsji[2] - ϕs3), ψsji[1] - ϕs3)
-            sumϕs1 += ϕs[j,i][1]
+            ψs1ji = ψs1[j,i]
+            ψs2ji = ψs2[j,i]
+            ϕs3 = max(ψs1ji, 0.0)
+            @damp δ  ϕs1[j,i] = max(0.0, ψs2ji - ϕs3)
+            @damp δ  ϕs2[j,i] = ψs1ji - ϕs3
+            sumϕs1 += ϕs1[j,i]
         end
         sumϕ1v[i], sumϕs1v[i] = sumϕ1, sumϕs1
 
@@ -207,11 +211,11 @@ function oneFBPstep!(mess::FMessages, s::Matrix{Float64}, λ::Float64, γ::Float
         ϕ2ᴹ, ϕ2ᵐ, jᴹ = -Inf, -Inf, -1
         for j = 1:N
             j == i && continue
-            ϕ2 = ϕ[j,i][2] - s[j,i]
-            if ϕ2 > ϕ2ᴹ
-                ϕ2ᴹ, ϕ2ᵐ, jᴹ = ϕ2, ϕ2ᴹ, j
-            elseif ϕ2 > ϕ2ᵐ
-                ϕ2ᵐ = ϕ2
+            ϕ2ⱼ = ϕ2[j,i] - s[j,i]
+            if ϕ2ⱼ > ϕ2ᴹ
+                ϕ2ᴹ, ϕ2ᵐ, jᴹ = ϕ2ⱼ, ϕ2ᴹ, j
+            elseif ϕ2ⱼ > ϕ2ᵐ
+                ϕ2ᵐ = ϕ2ⱼ
             end
         end
         @assert jᴹ ≠ -1
@@ -219,11 +223,11 @@ function oneFBPstep!(mess::FMessages, s::Matrix{Float64}, λ::Float64, γ::Float
         ϕs2ᴹ, ϕs2ᵐ, jsᴹ = -Inf, -Inf, -1
         for j = 1:N
             j == i && continue
-            ϕs2 = ϕs[j,i][2]
-            if ϕs2 > ϕs2ᴹ
-                ϕs2ᴹ, ϕs2ᵐ, jsᴹ = ϕs2, ϕs2ᴹ, j
-            elseif ϕs2 > ϕs2ᵐ
-                ϕs2ᵐ = ϕs2
+            ϕs2ⱼ = ϕs2[j,i]
+            if ϕs2ⱼ > ϕs2ᴹ
+                ϕs2ᴹ, ϕs2ᵐ, jsᴹ = ϕs2ⱼ, ϕs2ᴹ, j
+            elseif ϕs2ⱼ > ϕs2ᵐ
+                ϕs2ᵐ = ϕs2ⱼ
             end
         end
         @assert jsᴹ ≠ -1
@@ -234,10 +238,8 @@ function oneFBPstep!(mess::FMessages, s::Matrix{Float64}, λ::Float64, γ::Float
 
             ψ3 = -ϕ̂[i] + (jᴹ==j ? ϕ2ᵐ : ϕ2ᴹ)
 
-            ψ1 = -λ + sumϕ1 - ϕ[j,i][1] + ϕ̂[i] - ψ3
-            ψ2 = -s[i,j] - ϕ̂[i] - ψ3
-
-            @damp δ  ψ[i,j] = (ψ1, ψ2)
+            @damp δ  ψ1[i,j] = -λ + sumϕ1 - ϕ1[j,i] + ϕ̂[i] - ψ3
+            @damp δ  ψ2[i,j] = -s[i,j] - ϕ̂[i] - ψ3
         end
 
         # auxiliary graph cavity fields
@@ -246,10 +248,8 @@ function oneFBPstep!(mess::FMessages, s::Matrix{Float64}, λ::Float64, γ::Float
 
             ψs3 = -y * ϕ̃[i] + (jsᴹ==j ? ϕs2ᵐ : ϕs2ᴹ)
 
-            ψs1 = sumϕs1 - ϕs[j,i][1] + y * ϕ̃[i] - ψs3
-            ψs2 = -y * ϕ̃[i] - ψs3
-
-            @damp δ  ψs[i,j] = (ψs1, ψs2)
+            @damp δ  ψs1[i,j] = sumϕs1 - ϕs1[j,i] + y * ϕ̃[i] - ψs3
+            @damp δ  ψs2[i,j] = -y * ϕ̃[i] - ψs3
         end
 
         # ϕ̃[i] = γ + max(ψ̂[i], -γ) - max(ψ̂[i], γ)
@@ -259,7 +259,6 @@ function oneFBPstep!(mess::FMessages, s::Matrix{Float64}, λ::Float64, γ::Float
         @damp δ  ψ̂[i] = sumϕ1 - λ - ϕ2ᴹ
         @damp δ  ψ̃[i] = (y-1) * ϕ̃[i] + sumϕs1 - ϕs2ᴹ
     end
-
 end
 
 # function oneRBPstep!(mess::Messages, ψ¹::Array{Float64,1}, ψ²::Array{Float64,1}, s::Array{Float64, 2}, λ::Float64, ρ::Float64)
@@ -347,19 +346,19 @@ end
 # end
 
 function assign_variables(mess::FMessages, s::Matrix{Float64}, λ::Float64)
-    @extract mess : N ψ ϕ ϕ̂
+    @extract mess : N ϕ1 ϕ2 ϕ̂
 
     p = zeros(Int, N) # pointers
     d = fill(1, N)    # depths
 
     for i = 1:N
-        sumϕ1 = sum(ϕ[k,i][1] for k = 1:N if k ≠ i)
+        sumϕ1 = sum(ϕ1[k,i] for k = 1:N if k ≠ i)
         ψᴬ = -λ + sumϕ1 + ϕ̂[i]
         ψᴹ = -Inf
         jᴹ = -1
         for j in 1:N
             j == i && continue
-            ψᴮ = -s[i,j] + ϕ[j,i][2] - ϕ̂[i]
+            ψᴮ = -s[i,j] + ϕ2[j,i] - ϕ̂[i]
             if ψᴮ > ψᴹ
                 ψᴹ = ψᴮ
                 jᴹ = j
@@ -375,16 +374,16 @@ function assign_variables(mess::FMessages, s::Matrix{Float64}, λ::Float64)
 end
 
 function assign_variables_best(mess::FMessages, s::Matrix{Float64}, λ::Float64)
-    @extract mess : N ψ ϕ ϕ̂
+    @extract mess : N ϕ1 ϕ2 ϕ̂
 
     p = zeros(Int, N) # pointers
     d = fill(1, N)    # depths
     ex = Int[]
 
     for i = 1:N
-        sumϕ1 = sum(ϕ[k,i][1] for k = 1:N if k ≠ i)
+        sumϕ1 = sum(ϕ1[k,i] for k = 1:N if k ≠ i)
         ψ1 = -λ + sumϕ1 + ϕ̂[i]
-        ψ2 = maximum(-s[i,j] + ϕ[j,i][2] - ϕ̂[i] for j = 1:N if j ≠ i)
+        ψ2 = maximum(-s[i,j] + ϕ2[j,i] - ϕ̂[i] for j = 1:N if j ≠ i)
         if ψ1 > ψ2
             push!(ex, i)
         else
