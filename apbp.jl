@@ -110,7 +110,9 @@ function runFBP(data::Matrix{Float64}, γ::Float64, y::Float64;
         else
             t_stab = 0
         end
-        println("t = $t \t t_stab = $t_stab \t γ = $γ \t y = $y \t E = $E \t num_exemplars = $(sum(d.==1))")
+        d2, p2 = assign_variables_best(mess, s, λ)
+        E2 = energy(d2, p2, s, λ)
+        println("t = $t \t t_stab = $t_stab \t γ = $γ \t y = $y \t E = $E E2 = $E2 \t num_exemplars = $(sum(d.==1))")
         t += 1
         γ *= γfact
         y *= yfact
@@ -172,6 +174,9 @@ function oneFBPstep!(mess::FMessages, s::Matrix{Float64}, λ::Float64, γ::Float
     # perform a single asynchronous step of f-BP update equations
     @extract mess : N ψ ϕ ψs ϕs ψ̂ ϕ̂ ψ̃ ϕ̃
 
+    sumϕ1v = zeros(N)
+    sumϕs1v = zeros(N)
+
     for i in randperm(N)
 
         sumϕ1 = 0.0
@@ -188,10 +193,14 @@ function oneFBPstep!(mess::FMessages, s::Matrix{Float64}, λ::Float64, γ::Float
             @damp δ  ϕs[j,i] = @SVector([max(0.0, ψsji[2] - ϕs3), ψsji[1] - ϕs3])
             sumϕs1 += ϕs[j,i][1]
         end
+        sumϕ1v[i], sumϕs1v[i] = sumϕ1, sumϕs1
 
         # ϕ̃[i] = γ + max(ψ̂[i], -γ) - max(ψ̂[i], γ)
         @damp δ  ϕ̃[i] = abs(ψ̂[i]) ≥ γ ? sign(ψ̂[i]) * γ : ψ̂[i] # assumes γ > 0
         @damp δ  ϕ̂[i] = abs(ψ̃[i]) ≥ γ ? sign(ψ̃[i]) * γ : ψ̃[i] # assumes γ > 0
+    end
+    for i in randperm(N)
+        sumϕ1, sumϕs1 = sumϕ1v[i], sumϕs1v[i]
 
         ϕ2ᴹ, ϕ2ᵐ, jᴹ = -Inf, -Inf, -1
         for j = 1:N
@@ -447,6 +456,7 @@ function energy_AP(s::Matrix{Float64}, λ::Float64)
         p[j], d[j] = 0, 1
     end
     @assert is_good(d, p)
+    # @info "AP ex = $ex"
     return energy(d, p, s, λ)
 end
 
