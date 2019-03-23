@@ -306,31 +306,25 @@ end
 # end
 
 function assign_variables(mess::FMessages, s::Matrix{Float64}, λ::Float64)
-    @extract mess : N ψ ϕ ϕ̃
+    @extract mess : N ψ ϕ ϕ̂
 
     p = zeros(Int, N) # pointers
-    d = zeros(Int, N) # depths
-    ψᴬ = 0.0
-    ψᴮ = 0.0
-    ψᴹ = 0.0
+    d = fill(1, N)    # depths
 
     for i = 1:N
         sumϕ1 = sum(ϕ[k,i][1] for k = 1:N if k ≠ i)
-        ψᴬ = -λ + sumϕ1 + ϕ̃[i]
+        ψᴬ = -λ + sumϕ1 + ϕ̂[i]
         ψᴹ = -Inf
         jᴹ = -1
         for j in 1:N
             j == i && continue
-            ψᴮ = -s[i,j] + ϕ[j,i][2] - ϕ̃[i]
+            ψᴮ = -s[i,j] + ϕ[j,i][2] - ϕ̂[i]
             if ψᴮ > ψᴹ
                 ψᴹ = ψᴮ
                 jᴹ = j
             end
         end
-        if ψᴬ > ψᴹ
-            d[i] = 1
-            p[i] = 0 # is pointing to the root
-        else
+        if ψᴹ > ψᴬ
             @assert jᴹ ≠ -1
             d[i] = 2
             p[i] = jᴹ
