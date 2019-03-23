@@ -224,7 +224,7 @@ function oneFBPstep!(mess::FMessages, s::Matrix{Float64}, λ::Float64, γ::Float
         for j = 1:N
             j == i && continue
 
-            ψ3 = -ϕ̂[i] + jᴹ==j ? ϕ2ᵐ : ϕ2ᴹ
+            ψ3 = -ϕ̂[i] + (jᴹ==j ? ϕ2ᵐ : ϕ2ᴹ)
 
             ψ1 = -λ + sumϕ1 - ϕ[j,i][1] + ϕ̂[i] - ψ3
             ψ2 = -s[i,j] - ϕ̂[i] - ψ3
@@ -236,7 +236,7 @@ function oneFBPstep!(mess::FMessages, s::Matrix{Float64}, λ::Float64, γ::Float
         for j = 1:N
             j == i && continue
 
-            ψs3 = -y * ϕ̃[i] + jsᴹ==j ? ϕs2ᵐ : ϕs2ᴹ
+            ψs3 = -y * ϕ̃[i] + (jsᴹ==j ? ϕs2ᵐ : ϕs2ᴹ)
 
             ψs1 = sumϕs1 - ϕs[j,i][1] + y * ϕ̃[i] - ψs3
             ψs2 = -y * ϕ̃[i] - ψs3
