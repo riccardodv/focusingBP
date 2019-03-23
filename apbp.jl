@@ -4,6 +4,7 @@ using Random
 using Statistics
 using ExtractMacro
 using StaticArrays
+using LinearAlgebra
 
 using Clustering
 
@@ -381,41 +382,27 @@ function is_good(d::Vector{Int}, p::Vector{Int})
 end
 
 function energy_AP(s::Matrix{Float64}, λ::Float64)
-    N = size(s,2)
-    s_ap = zeros(N,N)
-    d = zeros(Int, N)
-    p = zeros(Int, N)
+    N = size(s, 2)
+    s_ap = -s
+    s_ap[diagind(s_ap)] .= -λ
 
-    s_ap[:] = -s[:]
-    [s_ap[i,i] = -λ for i = 1:N]
     R = affinityprop(s_ap, display=:none)
     R.converged || return Inf
 
     as = R.assignments
     ex = R.exemplars
-    for i = 1:N
-        p[i] = ex[as[i]]
-        d[i] = 2
-        if p[i] == i
-            p[i] = 0
-            d[i] = 1
-        end
+    p = ex[as]
+    d = fill(2, N)
+    for j in ex
+        p[j], d[j] = 0, 1
     end
     @assert is_good(d, p)
     return energy(d, p, s, λ)
 end
 
 function energy(d::Vector{Int}, p::Vector{Int}, s::Matrix{Float64}, λ::Float64)
-    N = size(s, 1)
-    E = 0
-    @inbounds for i = 1:N
-        if d[i] == 1
-            E += λ
-        else
-            E += s[i,p[i]]
-        end
-    end
-    return E
+    N = length(d)
+    return sum(d[i] == 1 ? λ : s[i, p[i]] for i = 1:N)
 end
 
 end # module
