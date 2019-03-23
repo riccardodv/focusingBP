@@ -13,6 +13,7 @@ const MMatrix{L} = MArray{L,2} where L
 const MVector{L} = MArray{L,1} where L
 
 mzeros(::Val{L}, dims...) where L = fill(SVector(zeros(L)...), dims...)
+mrand(::Val{L}, x, dims...) where L = fill(x .* SVector(randn(L)...), dims...)
 
 mutable struct FMessages
     N::Integer
@@ -29,16 +30,16 @@ mutable struct FMessages
     # from/to original graph and R
     ψ̃::Vector{Float64}
     ϕ̃::Vector{Float64}
-    function FMessages(N)
+    function FMessages(N, x = 0.0)
         # the messages are initialized to zero
-        ψ = mzeros(Val(2), N, N)
-        ϕ = mzeros(Val(2), N, N)
-        ψs = mzeros(Val(2), N, N)
-        ϕs = mzeros(Val(2), N, N)
-        ψ̂ = zeros(N)
-        ϕ̂ = zeros(N)
-        ψ̃ = zeros(N)
-        ϕ̃ = zeros(N)
+        ψ = mrand(Val(2), x, N, N)
+        ϕ = mrand(Val(2), x, N, N)
+        ψs = mrand(Val(2), x, N, N)
+        ϕs = mrand(Val(2), x, N, N)
+        ψ̂ = x .* randn(N)
+        ϕ̂ = x .* randn(N)
+        ψ̃ = x .* randn(N)
+        ϕ̃ = x .* randn(N)
         return new(N, ψ, ϕ, ψs, ϕs, ψ̂, ϕ̂, ψ̃, ϕ̃)
     end
 end
@@ -84,7 +85,8 @@ function runFBP(data::Matrix{Float64}, γ::Float64, y::Float64;
                 δ::Float64 = 0.0, # damping parameter (δ = 0 -> no damping)
                 γfact::Float64 = 1.0,
                 yfact::Float64 = 1.0,
-                λ = nothing, # self-similarity
+                λ::Union{Float64,Nothing} = nothing, # self-similarity
+                initrand::Float64 = 0.0,
                 max_iter::Integer = 1_000, t_stop::Integer = 10)
 
     seed > 0 && Random.seed!(seed)
@@ -92,7 +94,7 @@ function runFBP(data::Matrix{Float64}, γ::Float64, y::Float64;
     s = compute_similarities(data)
     λ == nothing && (λ = median(s))
 
-    mess = FMessages(N) # mess are initialized to zero
+    mess = FMessages(N, initrand) # mess are initialized to gaussians with σ=initrand
     d = zeros(Int, N)
     p = zeros(Int, N)
     t = 1
