@@ -193,14 +193,38 @@ function oneFBPstep!(mess::FMessages, s::Matrix{Float64}, λ::Float64, γ::Float
         @damp δ  ϕ̃[i] = abs(ψ̂[i]) ≥ γ ? sign(ψ̂[i]) * γ : ψ̂[i] # assumes γ > 0
         @damp δ  ϕ̂[i] = abs(ψ̃[i]) ≥ γ ? sign(ψ̃[i]) * γ : ψ̃[i] # assumes γ > 0
 
-        @damp δ  ψ̂[i] = sumϕ1 - λ - maximum(ϕ[j,i][2] - s[j,i] for j = 1:N if j ≠ i)
-        @damp δ  ψ̃[i] = (y-1) * ϕ̃[i] + sumϕs1 - maximum(ϕs[j,i][2] for j in 1:N if j ≠ i)
+        ϕ2ᴹ, ϕ2ᵐ, jᴹ = -Inf, -Inf, -1
+        for j = 1:N
+            j == i && continue
+            ϕ2 = ϕ[j,i][2] - s[j,i]
+            if ϕ2 > ϕ2ᴹ
+                ϕ2ᴹ, ϕ2ᵐ, jᴹ = ϕ2, ϕ2ᴹ, j
+            elseif ϕ2 > ϕ2ᵐ
+                ϕ2ᵐ = ϕ2
+            end
+        end
+        @assert jᴹ ≠ -1
+
+        ϕs2ᴹ, ϕs2ᵐ, jsᴹ = -Inf, -Inf, -1
+        for j = 1:N
+            j == i && continue
+            ϕs2 = ϕs[j,i][2]
+            if ϕs2 > ϕs2ᴹ
+                ϕs2ᴹ, ϕs2ᵐ, jsᴹ = ϕs2, ϕs2ᴹ, j
+            elseif ϕs2 > ϕs2ᵐ
+                ϕs2ᵐ = ϕs2
+            end
+        end
+        @assert jsᴹ ≠ -1
+
+        @damp δ  ψ̂[i] = sumϕ1 - λ - ϕ2ᴹ
+        @damp δ  ψ̃[i] = (y-1) * ϕ̃[i] + sumϕs1 - ϕs2ᴹ
 
         # original graph cavity fields
         for j = 1:N
             j == i && continue
 
-            ψ3 = -ϕ̂[i] + maximum(ϕ[k,i][2] - s[k,i] for k = 1:N if k ≠ i && k ≠ j)
+            ψ3 = -ϕ̂[i] + jᴹ==j ? ϕ2ᵐ : ϕ2ᴹ
 
             ψ1 = -λ + sumϕ1 - ϕ[j,i][1] + ϕ̂[i] - ψ3
             ψ2 = -s[i,j] - ϕ̂[i] - ψ3
@@ -212,12 +236,12 @@ function oneFBPstep!(mess::FMessages, s::Matrix{Float64}, λ::Float64, γ::Float
         for j = 1:N
             j == i && continue
 
-            ψs3 = -y * ϕ̃[i] + maximum(ϕs[k,i][2] for k = 1:N if k ≠ i && k ≠ j)
+            ψs3 = -y * ϕ̃[i] + jsᴹ==j ? ϕs2ᵐ : ϕs2ᴹ
 
             ψs1 = sumϕs1 - ϕs[j,i][1] + y * ϕ̃[i] - ψs3
             ψs2 = -y * ϕ̃[i] - ψs3
 
-            @damp δ ψs[i,j] = @SVector([ψs1, ψs2])
+            @damp δ  ψs[i,j] = @SVector([ψs1, ψs2])
         end
     end
 
