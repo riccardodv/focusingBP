@@ -3,17 +3,16 @@ module APBP
 using Random
 using Statistics
 using ExtractMacro
-using StaticArrays
 using LinearAlgebra
 
 using Clustering
 
-const MArray{L,N} = Array{SVector{L,Float64},N} where {L,N}
+const MArray{L,N} = Array{NTuple{L,Float64},N} where {L,N}
 const MMatrix{L} = MArray{L,2} where L
 const MVector{L} = MArray{L,1} where L
 
-mzeros(::Val{L}, dims...) where L = fill(SVector(zeros(L)...), dims...)
-mrand(::Val{L}, x, dims...) where L = fill(x .* SVector(randn(L)...), dims...)
+mzeros(::Val{L}, dims...) where L = fill(tuple(zeros(L)...), dims...)
+mrand(::Val{L}, x, dims...) where L = fill(tuple((x .* randn(L))...), dims...)
 
 mutable struct FMessages
     N::Integer
@@ -125,8 +124,14 @@ end
 macro damp(δ, ex)
     @assert Meta.isexpr(ex, :(=))
     δ = esc(δ)
-    dst = esc(ex.args[1])
-    src = esc(ex.args[2])
+    dst = ex.args[1]
+    src = ex.args[2]
+    if Meta.isexpr(src, :tuple)
+        rx = Expr(:tuple, [:($(esc(dst))[$i] * $δ + $(esc(src.args[i])) * (1 - $δ)) for i = 1:length(src.args)]...)
+        return :($(esc(dst)) = $rx)
+    end
+    dst = esc(dst)
+    src = esc(src)
     return :($dst = $dst * $δ + $src * (1 - $δ))
 end
 
@@ -177,7 +182,7 @@ function oneFBPstep!(mess::FMessages, s::Matrix{Float64}, λ::Float64, γ::Float
     sumϕ1v = zeros(N)
     sumϕs1v = zeros(N)
 
-    for i in randperm(N)
+    @inbounds for i in randperm(N)
 
         sumϕ1 = 0.0
         sumϕs1 = 0.0
@@ -185,21 +190,18 @@ function oneFBPstep!(mess::FMessages, s::Matrix{Float64}, λ::Float64, γ::Float
             j == i && continue
             ψji = ψ[j,i]
             ϕ3 = max(ψji[1], 0.0)
-            @damp δ  ϕ[j,i] = @SVector([max(0.0, ψji[2] - ϕ3), ψji[1] - ϕ3])
+            @damp δ  ϕ[j,i] = (max(0.0, ψji[2] - ϕ3), ψji[1] - ϕ3)
             sumϕ1 += ϕ[j,i][1]
 
             ψsji = ψs[j,i]
             ϕs3 = max(ψsji[1], 0.0)
-            @damp δ  ϕs[j,i] = @SVector([max(0.0, ψsji[2] - ϕs3), ψsji[1] - ϕs3])
+            @damp δ  ϕs[j,i] = (max(0.0, ψsji[2] - ϕs3), ψsji[1] - ϕs3)
             sumϕs1 += ϕs[j,i][1]
         end
         sumϕ1v[i], sumϕs1v[i] = sumϕ1, sumϕs1
 
-        # ϕ̃[i] = γ + max(ψ̂[i], -γ) - max(ψ̂[i], γ)
-        @damp δ  ϕ̃[i] = abs(ψ̂[i]) ≥ γ ? sign(ψ̂[i]) * γ : ψ̂[i] # assumes γ > 0
-        @damp δ  ϕ̂[i] = abs(ψ̃[i]) ≥ γ ? sign(ψ̃[i]) * γ : ψ̃[i] # assumes γ > 0
     end
-    for i in randperm(N)
+    @inbounds for i in randperm(N)
         sumϕ1, sumϕs1 = sumϕ1v[i], sumϕs1v[i]
 
         ϕ2ᴹ, ϕ2ᵐ, jᴹ = -Inf, -Inf, -1
@@ -226,9 +228,6 @@ function oneFBPstep!(mess::FMessages, s::Matrix{Float64}, λ::Float64, γ::Float
         end
         @assert jsᴹ ≠ -1
 
-        @damp δ  ψ̂[i] = sumϕ1 - λ - ϕ2ᴹ
-        @damp δ  ψ̃[i] = (y-1) * ϕ̃[i] + sumϕs1 - ϕs2ᴹ
-
         # original graph cavity fields
         for j = 1:N
             j == i && continue
@@ -238,7 +237,7 @@ function oneFBPstep!(mess::FMessages, s::Matrix{Float64}, λ::Float64, γ::Float
             ψ1 = -λ + sumϕ1 - ϕ[j,i][1] + ϕ̂[i] - ψ3
             ψ2 = -s[i,j] - ϕ̂[i] - ψ3
 
-            @damp δ  ψ[i,j] = @SVector([ψ1, ψ2])
+            @damp δ  ψ[i,j] = (ψ1, ψ2)
         end
 
         # auxiliary graph cavity fields
@@ -250,8 +249,15 @@ function oneFBPstep!(mess::FMessages, s::Matrix{Float64}, λ::Float64, γ::Float
             ψs1 = sumϕs1 - ϕs[j,i][1] + y * ϕ̃[i] - ψs3
             ψs2 = -y * ϕ̃[i] - ψs3
 
-            @damp δ  ψs[i,j] = @SVector([ψs1, ψs2])
+            @damp δ  ψs[i,j] = (ψs1, ψs2)
         end
+
+        # ϕ̃[i] = γ + max(ψ̂[i], -γ) - max(ψ̂[i], γ)
+        @damp δ  ϕ̃[i] = abs(ψ̂[i]) ≥ γ ? sign(ψ̂[i]) * γ : ψ̂[i] # assumes γ > 0
+        @damp δ  ϕ̂[i] = abs(ψ̃[i]) ≥ γ ? sign(ψ̃[i]) * γ : ψ̃[i] # assumes γ > 0
+
+        @damp δ  ψ̂[i] = sumϕ1 - λ - ϕ2ᴹ
+        @damp δ  ψ̃[i] = (y-1) * ϕ̃[i] + sumϕs1 - ϕs2ᴹ
     end
 
 end
@@ -445,7 +451,7 @@ function energy_AP(s::Matrix{Float64}, λ::Float64)
     s_ap = -s
     s_ap[diagind(s_ap)] .= -λ
 
-    R = affinityprop(s_ap, display=:none)
+    @time R = affinityprop(s_ap, display=:none)
     R.converged || return Inf
 
     as = R.assignments
