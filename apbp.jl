@@ -335,6 +335,36 @@ function assign_variables(mess::FMessages, s::Matrix{Float64}, λ::Float64)
     return d, p
 end
 
+function assign_variables_best(mess::FMessages, s::Matrix{Float64}, λ::Float64)
+    @extract mess : N ψ ϕ ϕ̂
+
+    p = zeros(Int, N) # pointers
+    d = fill(1, N)    # depths
+    ex = Int[]
+
+    for i = 1:N
+        sumϕ1 = sum(ϕ[k,i][1] for k = 1:N if k ≠ i)
+        ψ1 = -λ + sumϕ1 + ϕ̂[i]
+        ψ2 = maximum(-s[i,j] + ϕ[j,i][2] - ϕ̂[i] for j = 1:N if j ≠ i)
+        if ψ1 > ψ2
+            push!(ex, i)
+        else
+            d[i] = 2
+        end
+    end
+    length(ex) == 0 && (push!(ex, 1); d[1] = 1)
+    for i = 1:N
+        d[i] == 1 && continue
+        p[i] = ex[findmin(s[i,ex])[2]]
+        # @assert p[i] ∈ ex
+    end
+    # @show d, p
+    @assert is_good(d, p)
+    # @info "BP ex = $ex"
+
+    return d, p
+end
+
 # function assign_variables(mess::Messages, s::Matrix{Float64}, λ::Float64)
 #     @extract mess : N ψ ϕ
 #
