@@ -236,20 +236,20 @@ function oneFBPstep!(mess::FMessages, s::Matrix{Float64}, λ::Float64, γ::Float
         for j = 1:N
             j == i && continue
 
-            ψ3 = -ϕ̂[i] + (jᴹ==j ? ϕ2ᵐ : ϕ2ᴹ)
+            ψ3 = jᴹ==j ? ϕ2ᵐ : ϕ2ᴹ
 
             @damp δ  ψ1[i,j] = -λ + sumϕ1 - ϕ1[j,i] + ϕ̂[i] - ψ3
-            @damp δ  ψ2[i,j] = -s[i,j] - ϕ̂[i] - ψ3
+            @damp δ  ψ2[i,j] = -s[i,j] - ψ3
         end
 
         # auxiliary graph cavity fields
         for j = 1:N
             j == i && continue
 
-            ψs3 = -y * ϕ̃[i] + (jsᴹ==j ? ϕs2ᵐ : ϕs2ᴹ)
+            ψs3 = jsᴹ==j ? ϕs2ᵐ : ϕs2ᴹ
 
             @damp δ  ψs1[i,j] = sumϕs1 - ϕs1[j,i] + y * ϕ̃[i] - ψs3
-            @damp δ  ψs2[i,j] = -y * ϕ̃[i] - ψs3
+            @damp δ  ψs2[i,j] = -ψs3
         end
 
         # ϕ̃[i] = γ + max(ψ̂[i], -γ) - max(ψ̂[i], γ)
