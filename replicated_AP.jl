@@ -71,7 +71,8 @@ function affinityprop_mod(S::DenseMatrix{T};
                       y::Float64=_afp_default_y,
                       γ::Float64=_afp_default_γ,
                       γfact::Float64=_afp_default_γfact,
-                      display::Symbol=_afp_default_display) where T<:AbstractFloat
+                      display::Symbol=_afp_default_display,
+                      run_vanilla::Bool=false) where T<:AbstractFloat
 
     # check arguments
     n = size(S, 1)
@@ -81,7 +82,7 @@ function affinityprop_mod(S::DenseMatrix{T};
     0 <= damp < 1 || throw(ArgumentError("damp must be a non-negative real value below 1 ($damp given)."))
 
     # invoke core implementation
-    _affinityprop_mod(S, round(Int, maxiter), tol, convert(T, damp), display_level(display), y, γ, γfact)
+    _affinityprop_mod(S, round(Int, maxiter), tol, convert(T, damp), display_level(display), y, γ, γfact, run_vanilla)
 end
 
 
@@ -94,21 +95,28 @@ function _affinityprop_mod(S::DenseMatrix{T},
                        displevel::Int,
                        y::Float64,
                        γ::Float64,
-                       γfact::Float64) where T<:AbstractFloat
+                       γfact::Float64,
+                       run_vanilla::Bool) where T<:AbstractFloat
     n = size(S, 1)
     n2 = n * n
 
     # initialize messages
-    R = zeros(T, n, n)  # responsibilities
-    A = zeros(T, n, n)  # availabilities
+    R = .-rand(T, n, n)  # responsibilities
+    A = .-rand(T, n, n)  # availabilities
 
     # initialize messages reference
-    R_ref = randn(T, n, n)  # responsibilities
-    A_ref = randn(T, n, n)  # availabilities
+    R_ref = .-rand(T, n, n)  # responsibilities
+    A_ref = .-rand(T, n, n)  # availabilities
 
-    # initialize interaction messages
-    A_up = randn(T, n)  # from replica to reference
-    A_down = randn(T, n)  # from reference to replica
+    if run_vanilla
+        # initialize interaction messages
+        A_up = zeros(T, n)  # from replica to reference
+        A_down = zeros(T, n)  # from reference to replica
+    else
+        # initialize interaction messages
+        A_up = randn(T, n)  # from replica to reference
+        A_down = randn(T, n)  # from reference to replica
+    end
 
     # prepare storages
     Rt = Matrix{T}(undef, n, n)
@@ -136,24 +144,25 @@ function _affinityprop_mod(S::DenseMatrix{T},
         γ *= γfact
         # compute new messages
 
-        _afp_compute_a!(At, R)
-        _afp_dampen_update!(A, At, damp)
-
-
-        _afp_compute_a!(At_ref, R_ref)
-        _afp_dampen_update!(A_ref, At_ref, damp)
-
         _afp_compute_r!(Rt, S, A, A_down)
         _afp_dampen_update!(R, Rt, damp)
 
-        _afp_compute_r_ref!(Rt_ref, A_ref, A_up, y)
-        _afp_dampen_update!(R_ref, Rt_ref, damp)
+        _afp_compute_a!(At, R)
+        _afp_dampen_update!(A, At, damp)
 
-        _afp_compute_a_down!(At_down, A_ref, A_up, γ, y)
-        _afp_dampen_update!(A_down, At_down, damp)
+        if !run_vanilla
+            _afp_compute_r_ref!(Rt_ref, A_ref, A_up, y)
+            _afp_dampen_update!(R_ref, Rt_ref, damp)
 
-        _afp_compute_a_up!(At_up, A, S, γ)
-        _afp_dampen_update!(A_up, At_up, damp)
+            _afp_compute_a!(At_ref, R_ref)
+            _afp_dampen_update!(A_ref, At_ref, damp)
+
+            _afp_compute_a_down!(At_down, A_ref, A_up, γ, y)
+            _afp_dampen_update!(A_down, At_down, damp)
+
+            _afp_compute_a_up!(At_up, A, S, γ)
+            _afp_dampen_update!(A_up, At_up, damp)
+        end
 
         # normalize_message!(A)
         # normalize_message!(R)
@@ -161,8 +170,9 @@ function _affinityprop_mod(S::DenseMatrix{T},
         # normalize_message!(R_ref)
         # normalize_message!(A_up)
         # normalize_message!(A_down)
+
         if t % 50 == 0 || t in [1,5,10,25]
-            @printf("%.3f %.3f %.3f %.3f %.3f %.3f\n", mean(A), mean(R), mean(A_ref), mean(R_ref), mean(A_up), mean(A_down))
+            @printf("step = %4d, a: %.3f, r: %.3f, a*: %.3f, r*: %.3f, a_up: %.3f, a_down: %.3f\n", t, mean(A), mean(R), mean(A_ref), mean(R_ref), mean(A_up), mean(A_down))
         end
 
         # determine convergence
@@ -416,7 +426,7 @@ function _afp_compute_energy(S::Matrix{Float64}, exemplars::Vector{Int}, assignm
     N = size(S,2)
 
     for i in 1:N
-        E += S[i,exemplars[assignments[i]]]
+        E -= S[i,exemplars[assignments[i]]]
     end
 
     return E
