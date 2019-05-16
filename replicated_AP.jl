@@ -37,6 +37,7 @@ mutable struct AffinityPropResult <: ClusteringResult
     counts::Vector{Int}         # number of data points in each cluster
     iterations::Int             # number of iterations executed
     converged::Bool             # converged or not
+    energy::Float64               # energy of the configuration
 end
 
 const _afp_default_maxiter = 200
@@ -178,6 +179,7 @@ function _affinityprop_mod(S::DenseMatrix{T},
     # extract exemplars and assignments
     exemplars = _afp_extract_exemplars(A, R)
     assignments, counts = _afp_get_assignments(S, exemplars)
+    energy = _afp_compute_energy(S, exemplars, assignments)
 
     if displevel >= 1
         if converged
@@ -188,7 +190,7 @@ function _affinityprop_mod(S::DenseMatrix{T},
     end
 
     # produce output struct
-    return AffinityPropResult(exemplars, assignments, counts, t, converged)
+    return AffinityPropResult(exemplars, assignments, counts, t, converged, energy)
 end
 
 function normalize_message!(A::Matrix{T}) where T
@@ -407,4 +409,15 @@ const DisplayLevels = Dict(:none => 0, :final => 1, :iter => 2)
 
 display_level(s::Symbol) = get(DisplayLevels, s) do
     throw(ArgumentError("Invalid value for the 'display' option: $s."))
+end
+
+function _afp_compute_energy(S::Matrix{Float64}, exemplars::Vector{Int}, assignments::Vector{Int})
+    E = 0
+    N = size(S,2)
+
+    for i in 1:N
+        E += S[i,exemplars[assignments[i]]]
+    end
+
+    return E
 end
