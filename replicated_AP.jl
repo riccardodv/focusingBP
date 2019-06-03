@@ -30,6 +30,7 @@ The output of affinity propagation clustering ([`affinityprop`](@ref)).
  * `assignments::Vector{Int}`: cluster assignments for each data point
  * `iterations::Int`: number of iterations executed
  * `converged::Bool`: converged or not
+ * `energy::Flaot64`: computes configuration energy
 """
 mutable struct AffinityPropResult <: ClusteringResult
     exemplars::Vector{Int}      # indexes of exemplars (centers)
@@ -101,12 +102,12 @@ function _affinityprop_mod(S::DenseMatrix{T},
     n2 = n * n
 
     # initialize messages
-    R = .-rand(T, n, n)  # responsibilities
-    A = .-rand(T, n, n)  # availabilities
+    R = .-rand(T, n, n)./100  # responsibilities
+    A = .-rand(T, n, n)./100  # availabilities
 
     # initialize messages reference
-    R_ref = .-rand(T, n, n)  # responsibilities
-    A_ref = .-rand(T, n, n)  # availabilities
+    R_ref = .-rand(T, n, n)./100  # responsibilities
+    A_ref = .-rand(T, n, n)./100  # availabilities
 
     if run_vanilla
         # initialize interaction messages
@@ -114,8 +115,8 @@ function _affinityprop_mod(S::DenseMatrix{T},
         A_down = zeros(T, n)  # from reference to replica
     else
         # initialize interaction messages
-        A_up = randn(T, n)  # from replica to reference
-        A_down = randn(T, n)  # from reference to replica
+        A_up = randn(T, n)./100  # from replica to reference
+        A_down = randn(T, n)./100  # from reference to replica
     end
 
     # prepare storages
@@ -164,12 +165,12 @@ function _affinityprop_mod(S::DenseMatrix{T},
             _afp_dampen_update!(A_up, At_up, damp)
         end
 
-        # normalize_message!(A)
-        # normalize_message!(R)
-        # normalize_message!(A_ref)
-        # normalize_message!(R_ref)
-        # normalize_message!(A_up)
-        # normalize_message!(A_down)
+            # normalize_message!(A)
+            # normalize_message!(R)
+            # normalize_message!(A_ref)
+            # normalize_message!(R_ref)
+            # normalize_message!(A_up)
+            # normalize_message!(A_down)
 
         if t % 50 == 0 || t in [1,5,10,25]
             @printf("step = %4d, a: %.3f, r: %.3f, a*: %.3f, r*: %.3f, a_up: %.3f, a_down: %.3f\n", t, mean(A), mean(R), mean(A_ref), mean(R_ref), mean(A_up), mean(A_down))
