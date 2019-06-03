@@ -1,9 +1,3 @@
-Folder PATH listing for volume Local Disk
-Volume serial number is 64AE-50A0
-C:\USERS\LEOPE\GOOGLE DRIVE\EPFL\TESI\MODIFIED_AP\DATASETS
-|   file_name.txt
-|   listing.txt
-|   
 +---detecting_cities
 |       ca.csv
 |       coordinates.csv
