@@ -102,21 +102,21 @@ function _affinityprop_mod(S::DenseMatrix{T},
     n2 = n * n
 
     # initialize messages
-    R = .-zeros(T, n, n)./100  # responsibilities
-    A = .-zeros(T, n, n)./100  # availabilities
+    R = .-randn(T, n, n)./100  # responsibilities
+    A = .-randn(T, n, n)./100  # availabilities
 
     # initialize messages reference
-    R_ref = .-zeros(T, n, n)./100  # responsibilities
-    A_ref = .-zeros(T, n, n)./100  # availabilities
+    R_ref = .-randn(T, n, n)./100  # responsibilities
+    A_ref = .-randn(T, n, n)./100  # availabilities
 
-    if false
+    if run_vanilla
         # initialize interaction messages
-        A_up = zeros(T, n)  # from replica to reference
-        A_down = zeros(T, n)  # from reference to replica
+        A_up = zeros(T, n, n)  # from replica to reference
+        A_down = zeros(T, n, n)  # from reference to replica
     else
         # initialize interaction messages
-        A_up = zeros(T, n)./100  # from replica to reference
-        A_down = zeros(T, n)./100  # from reference to replica
+        A_up = randn(T, n, n)./100  # from replica to reference
+        A_down = randn(T, n, n)./100  # from reference to replica
     end
 
     # prepare storages
@@ -128,8 +128,8 @@ function _affinityprop_mod(S::DenseMatrix{T},
     At_ref = Matrix{T}(undef, n, n)
 
     # prepare interaction storage
-    At_up = Vector{T}(undef, n)  # from replica to reference
-    At_down = Vector{T}(undef, n)  # from reference to replica
+    At_up = Matrix{T}(undef, n, n)  # from replica to reference
+    At_down = Matrix{T}(undef, n, n)  # from reference to replica
 
 
 
@@ -165,13 +165,6 @@ function _affinityprop_mod(S::DenseMatrix{T},
             _afp_dampen_update!(A_up, At_up, damp)
         end
 
-            # normalize_message!(A)
-            # normalize_message!(R)
-            # normalize_message!(A_ref)
-            # normalize_message!(R_ref)
-            # normalize_message!(A_up)
-            # normalize_message!(A_down)
-
         if t % 50 == 0 || t in [1,5,10,25]
             @printf("step = %4d, a: %.3f, r: %.3f, a*: %.3f, r*: %.3f, a_up: %.3f, a_down: %.3f\n", t, mean(A), mean(R), mean(A_ref), mean(R_ref), mean(A_up), mean(A_down))
         end
@@ -204,8 +197,17 @@ function _affinityprop_mod(S::DenseMatrix{T},
     return AffinityPropResult(exemplars, assignments, counts, t, converged, energy)
 end
 
+function normalize_message!(A::Matrix{T}) where T
+    A .-= maximum(A, dims=2)
+end
+
+function normalize_message!(A::Array{T}) where T
+    A .-= maximum(A)
+end
+
+
 # compute responsibilities
-function _afp_compute_r!(R::Matrix{T}, S::DenseMatrix{T}, A::Matrix{T}, A_down::Vector{T}) where T
+function _afp_compute_r!(R::Matrix{T}, S::DenseMatrix{T}, A::Matrix{T}, A_down::Matrix{T}) where T
     n = size(S, 1)
 
     I1 = Vector{Int}(undef, n)  # I1[i] is the column index of the maximum element in (A+S)[i,:]
@@ -214,8 +216,8 @@ function _afp_compute_r!(R::Matrix{T}, S::DenseMatrix{T}, A::Matrix{T}, A_down::
 
     # Find the first and second maximum elements along each row
     @inbounds for i = 1:n
-        v1 = A[i,1] + S[i,1] + (i==1) * A_down[i]
-        v2 = A[i,2] + S[i,2] + (i==2) * A_down[i]
+        v1 = A[i,1] + S[i,1] + A_down[i,1]
+        v2 = A[i,2] + S[i,2] + A_down[i,2]
         if v1 > v2
             I1[i] = 1
             Y1[i] = v1
@@ -227,7 +229,7 @@ function _afp_compute_r!(R::Matrix{T}, S::DenseMatrix{T}, A::Matrix{T}, A_down::
         end
     end
     @inbounds for j = 3:n, i = 1:n
-        v = A[i,j] + S[i,j] + (i==j) * A_down[i]
+        v = A[i,j] + S[i,j] + A_down[i,j]
         if v > Y2[i]
             if v > Y1[i]
                 Y2[i] = Y1[i]
@@ -242,14 +244,14 @@ function _afp_compute_r!(R::Matrix{T}, S::DenseMatrix{T}, A::Matrix{T}, A_down::
     # compute R values
     @inbounds for j = 1:n, i = 1:n
         mv = (j == I1[i] ? Y2[i] : Y1[i])
-        R[i,j] = S[i,j] + (i==j) * A_down[i] - mv
+        R[i,j] = S[i,j] + A_down[i,j] - mv
     end
 
     return R
 end
 
 # compute auxiliary replica responsibilities
-function _afp_compute_r_ref!(R::Matrix{T}, A::Matrix{T}, A_up::Vector{T}, y::T) where T
+function _afp_compute_r_ref!(R::Matrix{T}, A::Matrix{T}, A_up::Matrix{T}, y::T) where T
     n = size(S, 1)
 
     I1 = Vector{Int}(undef, n)  # I1[i] is the column index of the maximum element in (A+S)[i,:]
@@ -258,8 +260,8 @@ function _afp_compute_r_ref!(R::Matrix{T}, A::Matrix{T}, A_up::Vector{T}, y::T) 
 
     # Find the first and second maximum elements along each row
     @inbounds for i = 1:n
-        v1 = A[i,1] + (i==1) * y * A_up[i]
-        v2 = A[i,2] + (i==2) * y * A_up[i]
+        v1 = A[i,1] + y * A_up[i,1]
+        v2 = A[i,2] + y * A_up[i,2]
         if v1 > v2
             I1[i] = 1
             Y1[i] = v1
@@ -271,7 +273,7 @@ function _afp_compute_r_ref!(R::Matrix{T}, A::Matrix{T}, A_up::Vector{T}, y::T) 
         end
     end
     @inbounds for j = 3:n, i = 1:n
-        v = A[i,j] + (i==j) * y * A_up[i]
+        v = A[i,j] + y * A_up[i,j]
         if v > Y2[i]
             if v > Y1[i]
                 Y2[i] = Y1[i]
@@ -286,7 +288,7 @@ function _afp_compute_r_ref!(R::Matrix{T}, A::Matrix{T}, A_up::Vector{T}, y::T) 
     # compute R values
     @inbounds for j = 1:n, i = 1:n
         mv = (j == I1[i] ? Y2[i] : Y1[i])
-        R[i,j] = - mv + (i==j) * y * A_up[i]
+        R[i,j] = - mv + y * A_up[i,j]
     end
 
     return R
@@ -328,18 +330,35 @@ function _afp_compute_a!(A::Matrix{T}, R::Matrix{T}) where T
 end
 
 # compute interactions
-function _afp_compute_a_up!(A_up::Vector{T}, A::Matrix{T}, S::Matrix{T}, γ::T) where T
+function _afp_compute_a_up!(A_up::Matrix{T}, A::Matrix{T}, S::Matrix{T}, γ::T) where T
 
     n = size(S, 1)
-    A_up = maximum(S .+ A + γ*I, dims=2) .- maximum(S .+ A .+ γ .* (ones(n,n)-I), dims=2)
 
+    temp = S .+ A
+    A_up_temp =  maximum(temp, dims=2)
+
+    temp .+= γ
+
+    for k = 1:n
+        A_up[:,k] = maximum(hcat(A_up_temp, temp[:,k]), dims=2)
+    end
+
+    return A_up
 end
 
-function _afp_compute_a_down!(A_down::Vector{T}, A_ref::Matrix{T}, A_up::Vector{T}, γ::T, y::T) where T
+function _afp_compute_a_down!(A_down::Matrix{T}, A_ref::Matrix{T}, A_up::Matrix{T}, γ::T, y::T) where T
     n = size(A_ref, 1)
 
-    A_down = maximum(A_ref .+ (y-1).*Diagonal(A_up) + γ*I, dims=2) .- maximum(A_ref .+ (y-1).*Diagonal(A_up)  .+ γ .* (ones(n,n)-I), dims=2)
+    temp = A_ref .+ (y-1) .* A_up
+    A_down_temp =  maximum(temp, dims=2)
 
+    temp .+= γ
+
+    for k = 1:n
+        A_down[:,k] = maximum(hcat(A_down_temp, temp[:,k]), dims=2)
+    end
+
+    return A_down
 end
 
 
@@ -347,7 +366,7 @@ end
 function _afp_dampen_update!(x::Array{T}, xt::Array{T}, damp::T) where T
     ct = one(T) - damp
     for i = 1:length(x)
-        @inbounds x[i] = ct .* xt[i] .+ damp .* x[i]
+        @inbounds x[i] = ct * xt[i] + damp * x[i]
     end
     return x
 end
