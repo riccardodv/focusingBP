@@ -260,7 +260,7 @@ end
 
 # compute auxiliary replica responsibilities
 function _afp_compute_r_ref!(R::Matrix{T}, A::Matrix{T}, A_up::Matrix{T}, y::T) where T
-    n = size(S, 1)
+    n = size(A, 1)
 
     I1 = Vector{Int}(undef, n)  # I1[i] is the column index of the maximum element in (A+S)[i,:]
     Y1 = Vector{T}(undef, n)    # Y1[i] is the maximum element in (A+S)[i,:]
