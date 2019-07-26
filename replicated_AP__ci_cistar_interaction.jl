@@ -1,3 +1,5 @@
+module AP
+
 using Distances
 using NearestNeighbors
 using StatsBase
@@ -204,15 +206,6 @@ function _affinityprop(S::DenseMatrix{T},
     # produce output struct
     return AffinityPropResult(exemplars, assignments, counts, t, converged, energy)
 end
-
-function normalize_message!(A::Matrix{T}) where T
-    A .-= maximum(A, dims=2)
-end
-
-function normalize_message!(A::Array{T}) where T
-    A .-= maximum(A)
-end
-
 
 # compute responsibilities
 function _afp_compute_r!(R::Matrix{T}, S::DenseMatrix{T}, A::Matrix{T}, A_down::Matrix{T}) where T
@@ -440,3 +433,5 @@ function _afp_compute_energy(S::Matrix{Float64}, exemplars::Vector{Int}, assignm
 
     return E
 end
+
+end # module

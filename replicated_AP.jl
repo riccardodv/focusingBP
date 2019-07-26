@@ -1,3 +1,5 @@
+module AP
+
 using Distances
 using NearestNeighbors
 using StatsBase
@@ -420,3 +422,5 @@ function _afp_compute_energy(S::Matrix{Float64}, exemplars::Vector{Int}, assignm
 
     return E
 end
+
+end # module
