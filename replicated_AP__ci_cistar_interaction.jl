@@ -65,7 +65,7 @@ of the ``i``-th point as an *exemplar*.
 > Brendan J. Frey and Delbert Dueck. *Clustering by Passing Messages
 > Between Data Points.* Science, vol 315, pages 972-976, 2007.
 """
-function affinityprop_mod(S::DenseMatrix{T};
+function affinitypropR(S::DenseMatrix{T};
                       maxiter::Integer=_afp_default_maxiter,
                       tol::Real=_afp_default_tol,
                       damp::Real=_afp_default_damp,
@@ -73,7 +73,8 @@ function affinityprop_mod(S::DenseMatrix{T};
                       γ::Float64=_afp_default_γ,
                       γfact::Float64=_afp_default_γfact,
                       display::Symbol=_afp_default_display,
-                      run_vanilla::Bool=false) where T<:AbstractFloat
+                      run_vanilla::Bool=false,
+                      zero_init::Bool=false) where T<:AbstractFloat
 
     # check arguments
     n = size(S, 1)
@@ -83,13 +84,13 @@ function affinityprop_mod(S::DenseMatrix{T};
     0 <= damp < 1 || throw(ArgumentError("damp must be a non-negative real value below 1 ($damp given)."))
 
     # invoke core implementation
-    _affinityprop_mod(S, round(Int, maxiter), tol, convert(T, damp), display_level(display), y, γ, γfact, run_vanilla)
+    _affinityprop(S, round(Int, maxiter), tol, convert(T, damp), display_level(display), y, γ, γfact, run_vanilla, zero_init)
 end
 
 
 #### Implementation
 
-function _affinityprop_mod(S::DenseMatrix{T},
+function _affinityprop(S::DenseMatrix{T},
                        maxiter::Int,
                        tol::Real,
                        damp::T,
@@ -97,17 +98,24 @@ function _affinityprop_mod(S::DenseMatrix{T},
                        y::Float64,
                        γ::Float64,
                        γfact::Float64,
-                       run_vanilla::Bool) where T<:AbstractFloat
+                       run_vanilla::Bool,
+                       zero_init::Bool) where T<:AbstractFloat
     n = size(S, 1)
     n2 = n * n
 
+    if zero_init
+        init_fun = zeros
+    else
+        init_fun = randn
+    end
+
     # initialize messages
-    R = .-randn(T, n, n)./100  # responsibilities
-    A = .-randn(T, n, n)./100  # availabilities
+    R = init_fun(T, n, n)./100  # responsibilities
+    A = init_fun(T, n, n)./100  # availabilities
 
     # initialize messages reference
-    R_ref = .-randn(T, n, n)./100  # responsibilities
-    A_ref = .-randn(T, n, n)./100  # availabilities
+    R_ref = init_fun(T, n, n)./100  # responsibilities
+    A_ref = init_fun(T, n, n)./100  # availabilities
 
     if run_vanilla
         # initialize interaction messages
@@ -115,8 +123,8 @@ function _affinityprop_mod(S::DenseMatrix{T},
         A_down = zeros(T, n, n)  # from reference to replica
     else
         # initialize interaction messages
-        A_up = randn(T, n, n)./100  # from replica to reference
-        A_down = randn(T, n, n)./100  # from reference to replica
+        A_up = init_fun(T, n, n)./100  # from replica to reference
+        A_down = init_fun(T, n, n)./100  # from reference to replica
     end
 
     # prepare storages
@@ -165,9 +173,9 @@ function _affinityprop_mod(S::DenseMatrix{T},
             _afp_dampen_update!(A_up, At_up, damp)
         end
 
-        if t % 50 == 0 || t in [1,5,10,25]
-            @printf("step = %4d, a: %.3f, r: %.3f, a*: %.3f, r*: %.3f, a_up: %.3f, a_down: %.3f\n", t, mean(A), mean(R), mean(A_ref), mean(R_ref), mean(A_up), mean(A_down))
-        end
+        # if t % 50 == 0 || t in [1,5,10,25]
+        #     @printf("step = %4d, a: %.3f, r: %.3f, a*: %.3f, r*: %.3f, a_up: %.3f, a_down: %.3f\n", t, mean(A), mean(R), mean(A_ref), mean(R_ref), mean(A_up), mean(A_down))
+        # end
 
         # determine convergence
         ch = max(Linfdist(A, At), Linfdist(R, Rt)) / (one(T) - damp)
