@@ -339,16 +339,12 @@ end
 
 # compute interactions
 function _afp_compute_a_up!(A_up::Matrix{T}, A::Matrix{T}, S::Matrix{T}, γ::T) where T
-
     n = size(S, 1)
 
-    temp = S .+ A
-    A_up_temp =  maximum(temp, dims=2)
-
-    temp .+= γ
-
-    for k = 1:n
-        A_up[:,k] = maximum(hcat(A_up_temp, temp[:,k]), dims=2)
+    A_up .= S .+ A .+ γ
+    v = maximum(A_up, dims=2) .- γ
+    @inbounds for k = 1:n, i = 1:n
+        A_up[i, k] = max(A_up[i, k], v[i])
     end
 
     return A_up
@@ -357,13 +353,10 @@ end
 function _afp_compute_a_down!(A_down::Matrix{T}, A_ref::Matrix{T}, A_up::Matrix{T}, γ::T, y::T) where T
     n = size(A_ref, 1)
 
-    temp = A_ref .+ (y-1) .* A_up
-    A_down_temp =  maximum(temp, dims=2)
-
-    temp .+= γ
-
-    for k = 1:n
-        A_down[:,k] = maximum(hcat(A_down_temp, temp[:,k]), dims=2)
+    A_down .= A_ref .+ (y-1) .* A_up .+ γ
+    v = maximum(A_down, dims=2) .- γ
+    @inbounds for k = 1:n, i = 1:n
+        A_down[i, k] = max(A_down[i, k], v[i])
     end
 
     return A_down
